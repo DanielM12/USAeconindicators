@@ -812,26 +812,31 @@
             btn.disabled = true;
             btn.textContent = 'Loading...';
 
-            if (FRED_API_KEY === 'YOUR_API_KEY_HERE') {
-                console.log('No FRED API key configured. Using demonstration data.');
-                console.log('Get your free API key at: https://fred.stlouisfed.org/docs/api/api_key.html');
-                loadDemoData();
-                btn.disabled = false;
-                btn.textContent = '↻ Refresh All Data';
-                return;
-            }
-
-            // Auto Loan data is from NY Fed (not FRED), so always use demo data for it
-            updateIndicator('auto', 3.2, 3.0, 'Q3 2024 (NY Fed)', '%');
-            renderChart('auto-chart', [2.1, 2.2, 2.3, 2.5, 2.6, 2.7, 2.8, 2.9, 3.0, 3.1, 3.1, 3.2], '%');
-
             try {
-                const [dsrData, chargeoffData, claimsData, spreadData] = await Promise.all([
+                if (FRED_API_KEY === 'YOUR_API_KEY_HERE') {
+                    console.log('No FRED API key configured. Using demonstration data.');
+                    console.log('Get your free API key at: https://fred.stlouisfed.org/docs/api/api_key.html');
+                    loadDemoData();
+                    return;
+                }
+
+                // Auto Loan data is from NY Fed (not FRED), so always use demo data for it
+                updateIndicator('auto', 3.2, 3.0, 'Q3 2024 (NY Fed)', '%');
+                renderChart('auto-chart', [2.1, 2.2, 2.3, 2.5, 2.6, 2.7, 2.8, 2.9, 3.0, 3.1, 3.1, 3.2], '%');
+
+                // Use Promise.allSettled so individual failures don't break everything
+                const results = await Promise.allSettled([
                     fetchFredData(SERIES.dsr),
                     fetchFredData(SERIES.chargeoff),
                     fetchFredData(SERIES.claims),
                     fetchFredData(SERIES.spread)
                 ]);
+
+                const [dsrResult, chargeoffResult, claimsResult, spreadResult] = results;
+                const dsrData = dsrResult.status === 'fulfilled' ? dsrResult.value : null;
+                const chargeoffData = chargeoffResult.status === 'fulfilled' ? chargeoffResult.value : null;
+                const claimsData = claimsResult.status === 'fulfilled' ? claimsResult.value : null;
+                const spreadData = spreadResult.status === 'fulfilled' ? spreadResult.value : null;
 
                 // DSR - with fallback
                 if (dsrData && dsrData.length >= 2) {
@@ -878,10 +883,11 @@
             } catch (error) {
                 console.error('Error fetching data:', error);
                 loadDemoData();
+            } finally {
+                // Always re-enable button, even if something fails
+                btn.disabled = false;
+                btn.textContent = '↻ Refresh All Data';
             }
-
-            btn.disabled = false;
-            btn.textContent = '↻ Refresh All Data';
         }
 
         document.addEventListener('DOMContentLoaded', fetchAllData);
